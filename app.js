@@ -96,7 +96,7 @@ function parseCommand(raw){
  return {type:"create",item:{title,date,time:start,end,allDay:/終日/.test(t)}};
 }
 $("commandForm").addEventListener("submit",ev=>{ev.preventDefault();const result=parseCommand($("command").value);
- if(result.type==="create"){const item={...result.item,id:crypto.randomUUID(),note:""};if(item.end&&item.time&&item.end<item.time){$("assistantReply").textContent="終了時刻が開始時刻より前になっているみたい。入力を確認してね。";return}
+ if(result.type==="create"){const item={...result.item,note:""};if(item.end&&item.time&&item.end<item.time){$("assistantReply").textContent="終了時刻が開始時刻より前になっているみたい。入力を確認してね。";return}
  openDialog(item);$("assistantReply").textContent=`登録内容を確認してね：${fmtDate(item.date)} ${item.allDay?"終日":item.time||"時間未定"}「${item.title}」`; }
  else if(result.type==="answer"){$("assistantReply").textContent=result.message}
  else if(result.type==="edit"){openEdit(result.event.id);$("assistantReply").textContent=result.message}

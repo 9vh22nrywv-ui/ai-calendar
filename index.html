@@ -10,85 +10,105 @@
 </head>
 <body>
   <header class="topbar">
-    <div>
-      <div class="eyebrow">MY SCHEDULE</div>
-      <h1>カレンダー</h1>
-    </div>
+    <div><div class="eyebrow">MY SCHEDULE</div><h1 id="pageTitle">カレンダー</h1></div>
     <button id="todayBtn" class="subtle">今日</button>
   </header>
-
   <main>
+    <nav class="view-tabs" aria-label="表示切替">
+      <button type="button" id="calendarTab" class="view-tab active">カレンダー</button>
+      <button type="button" id="todoTab" class="view-tab">TODOリスト</button>
+    </nav>
+
     <section class="assistant card">
       <div class="assistant-head">
         <div class="avatar">✦</div>
-        <div>
-          <strong>予定アシスタント</strong>
-          <p>話しかけるか、文字で予定を入力してね</p>
-        </div>
+        <div><strong>予定アシスタント</strong><p>予定やTODOを文字で入力してね</p></div>
       </div>
       <form id="commandForm">
-        <label class="sr-only" for="command">予定や質問を入力</label>
-        <textarea id="command" rows="2" placeholder="例：明日9時から歯医者&#10;例：今週の予定を教えて"></textarea>
+        <label class="sr-only" for="command">予定やTODO、質問を入力</label>
+        <textarea id="command" rows="2" placeholder="例：明日9時から歯医者&#10;例：明日までに電球を買う&#10;例：今週の予定を教えて"></textarea>
         <div class="command-actions">
           <button type="button" id="micBtn" class="round" aria-label="音声入力">🎙</button>
           <span id="voiceStatus" class="hint">音声入力は対応ブラウザで利用できます</span>
           <button type="submit" class="primary">実行</button>
         </div>
       </form>
-      <div id="assistantReply" class="reply" aria-live="polite">予定の登録・確認・変更ができるよ。</div>
+      <div id="assistantReply" class="reply" aria-live="polite">予定の登録・確認・変更とTODOの追加ができるよ。</div>
     </section>
 
-    <section class="calendar card">
-      <div class="month-row">
-        <button id="prevMonth" class="icon-btn" aria-label="前の月">‹</button>
-        <h2 id="monthLabel"></h2>
-        <button id="nextMonth" class="icon-btn" aria-label="次の月">›</button>
-      </div>
-      <div class="weekdays">
-        <span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span>
-      </div>
-      <div id="calendarGrid" class="calendar-grid"></div>
-    </section>
-
-    <section class="agenda card">
-      <div class="agenda-title">
-        <div>
-          <div class="eyebrow">DAILY PLAN</div>
-          <h2 id="selectedDateLabel">今日の予定</h2>
+    <div id="calendarView">
+      <section class="calendar card">
+        <div class="month-row">
+          <button id="prevMonth" class="icon-btn" aria-label="前の月">‹</button>
+          <h2 id="monthLabel"></h2>
+          <button id="nextMonth" class="icon-btn" aria-label="次の月">›</button>
         </div>
-        <button id="addBtn" class="add-btn">＋ 予定</button>
-      </div>
-      <div id="eventList" class="event-list"></div>
-    </section>
+        <div class="weekdays"><span>日</span><span>月</span><span>火</span><span>水</span><span>木</span><span>金</span><span>土</span></div>
+        <div id="calendarGrid" class="calendar-grid"></div>
+      </section>
+      <section class="agenda card">
+        <div class="agenda-title">
+          <div><div class="eyebrow">DAILY PLAN</div><h2 id="selectedDateLabel">今日の予定</h2></div>
+          <button id="addBtn" class="add-btn">＋ 予定</button>
+        </div>
+        <div id="eventList" class="event-list"></div>
+      </section>
+    </div>
 
-    <p class="footnote">データはこの端末のブラウザ内に保存されます。大切な予定は定期的にバックアップしてね。</p>
+    <section id="todoView" class="card hidden">
+      <div class="agenda-title todo-heading">
+        <div><div class="eyebrow">TASK MANAGEMENT</div><h2>TODOリスト</h2></div>
+        <button id="addTodoBtn" class="add-btn">＋ TODO</button>
+      </div>
+      <div class="todo-summary">
+        <div><strong id="todoRemaining">0</strong><span>未完了</span></div>
+        <div><strong id="todoOverdue">0</strong><span>期限切れ</span></div>
+        <div><strong id="todoCompleted">0</strong><span>完了</span></div>
+      </div>
+      <div class="todo-toolbar">
+        <label for="todoSort">並び順</label>
+        <select id="todoSort">
+          <option value="due">期限が近い順</option>
+          <option value="planned">実行予定日順</option>
+          <option value="priority">優先度順</option>
+        </select>
+        <button type="button" id="showCompletedBtn" class="subtle">完了も表示</button>
+      </div>
+      <div id="todoList" class="todo-list"></div>
+    </section>
+    <p class="footnote">データはこの端末のブラウザ内に保存されます。大切な予定やTODOは定期的にバックアップしてね。</p>
   </main>
 
   <dialog id="eventDialog">
     <form method="dialog" id="eventForm" class="dialog-form">
-      <div class="dialog-head">
-        <h2 id="dialogTitle">予定を追加</h2>
-        <button type="button" id="closeDialog" class="icon-btn">×</button>
-      </div>
+      <div class="dialog-head"><h2 id="dialogTitle">予定を追加</h2><button type="button" id="closeDialog" class="icon-btn">×</button></div>
       <label>予定名<input id="eventTitle" required maxlength="80" placeholder="例：歯医者"></label>
-      <div class="two-col">
-        <label>日付<input id="eventDate" type="date" required></label>
-        <label>開始<input id="eventTime" type="time"></label>
-      </div>
-      <div class="two-col">
-        <label>終了<input id="eventEnd" type="time"></label>
-        <label class="check-label"><input id="allDay" type="checkbox"> 終日</label>
-      </div>
+      <div class="two-col"><label>日付<input id="eventDate" type="date" required></label><label>開始<input id="eventTime" type="time"></label></div>
+      <div class="two-col"><label>終了<input id="eventEnd" type="time"></label><label class="check-label"><input id="allDay" type="checkbox"> 終日</label></div>
       <label>メモ<textarea id="eventNote" rows="2" placeholder="場所や持ち物など"></textarea></label>
       <div class="dialog-actions">
-        <button type="button" id="deleteEvent" class="danger hidden">削除</button>
-        <span class="spacer"></span>
-        <button type="button" id="cancelDialog" class="subtle">キャンセル</button>
-        <button type="submit" class="primary">保存</button>
+        <button type="button" id="deleteEvent" class="danger hidden">削除</button><span class="spacer"></span>
+        <button type="button" id="cancelDialog" class="subtle">キャンセル</button><button type="submit" class="primary">保存</button>
       </div>
     </form>
   </dialog>
 
+  <dialog id="todoDialog">
+    <form method="dialog" id="todoForm" class="dialog-form">
+      <div class="dialog-head"><h2 id="todoDialogTitle">TODOを追加</h2><button type="button" id="closeTodoDialog" class="icon-btn">×</button></div>
+      <label>やること<input id="todoTitle" required maxlength="100" placeholder="例：電球を買う"></label>
+      <div class="two-col">
+        <label>期限<input id="todoDue" type="date"></label>
+        <label>実行予定日<input id="todoPlanned" type="date"></label>
+      </div>
+      <label>優先度<select id="todoPriority"><option value="2">普通</option><option value="3">高</option><option value="1">低</option></select></label>
+      <label>メモ<textarea id="todoNote" rows="2" placeholder="必要なもの・補足など"></textarea></label>
+      <div class="dialog-actions">
+        <button type="button" id="deleteTodo" class="danger hidden">削除</button><span class="spacer"></span>
+        <button type="button" id="cancelTodoDialog" class="subtle">キャンセル</button><button type="submit" class="primary">保存</button>
+      </div>
+    </form>
+  </dialog>
   <script src="app.js"></script>
 </body>
 </html>

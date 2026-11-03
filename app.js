@@ -10,8 +10,8 @@ let editingTodoId = null;
 let showCompleted = false;
 let currentView = "calendar";
 
-function loadEvents(){ try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]")}catch{return []} }
-function saveEvents(){localStorage.setItem(STORAGE_KEY,JSON.stringify(events)); render()}
+function loadEvents(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||"[]")}catch{return []}}
+function saveEvents(){localStorage.setItem(STORAGE_KEY,JSON.stringify(events));render()}
 function loadTodos(){try{const v=JSON.parse(localStorage.getItem(TODO_STORAGE_KEY)||"[]");return Array.isArray(v)?v:[]}catch{return []}}
 function saveTodos(){localStorage.setItem(TODO_STORAGE_KEY,JSON.stringify(todos));renderTodos()}
 function dateKey(d){return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`}
@@ -70,7 +70,7 @@ $("prevMonth").onclick=()=>{viewDate.setMonth(viewDate.getMonth()-1);render()};
 $("nextMonth").onclick=()=>{viewDate.setMonth(viewDate.getMonth()+1);render()};
 $("todayBtn").onclick=()=>{const d=new Date();selectedDate=dateKey(d);viewDate=new Date(d.getFullYear(),d.getMonth(),1);render()};
 
-// TODO management: kept in a separate localStorage key so existing calendar events remain untouched.
+// TODO management
 function openTodoDialog(todo=null){
  editingTodoId=todo?.id||null;$("todoDialogTitle").textContent=todo?"TODOを編集":"TODOを追加";
  $("todoTitle").value=todo?.title||"";$("todoDue").value=todo?.dueDate||"";
@@ -118,76 +118,93 @@ function renderTodos(){
  el.querySelectorAll(".todo-edit").forEach(b=>b.onclick=()=>editTodo(b.dataset.id));
 }
 
-// Date parser shared by calendar commands and TODO input.
+// Date parsing
+function dateExpression(){
+ return "(?:\\d{4}\\/\\d{1,2}\\/\\d{1,2}|\\d{1,2}\\/\\d{1,2}|\\d{1,2}月\\d{1,2}日|明後日|明日|今日|\\d+日後|来週(?:の)?(?:日|月|火|水|木|金|土)曜日?|(?:日|月|火|水|木|金|土)曜日|月末)";
+}
 function resolveDate(text){
  const now=new Date();let d=new Date(now.getFullYear(),now.getMonth(),now.getDate());
+ if(/月末/.test(text)){d=new Date(d.getFullYear(),d.getMonth()+1,0);return dateKey(d)}
  if(/明後日/.test(text))d.setDate(d.getDate()+2);
  else if(/明日/.test(text))d.setDate(d.getDate()+1);
  else if(/今日/.test(text)){}
- else {
+ else{
   const rel=text.match(/(\d+)\s*日後/);if(rel)d.setDate(d.getDate()+Number(rel[1]));
-  const m=text.match(/(\d{1,2})月(\d{1,2})日/);if(m)d=new Date(now.getFullYear(),Number(m[1])-1,Number(m[2]));
-  const w=text.match(/来週の?(日|月|火|水|木|金|土)曜日?/);
-  if(w){const target="日月火水木金土".indexOf(w[1]);let diff=(target-d.getDay()+7)%7;if(diff===0)diff=7;d.setDate(d.getDate()+diff+7);}
-  else {const w2=text.match(/(日|月|火|水|木|金|土)曜日/);if(w2){const target="日月火水木金土".indexOf(w2[1]);let diff=(target-d.getDay()+7)%7;if(diff===0)diff=7;d.setDate(d.getDate()+diff);}}
+  const ymd=text.match(/(\d{4})\/(\d{1,2})\/(\d{1,2})/);
+  const slash=text.match(/(?:^|\D)(\d{1,2})\/(\d{1,2})(?!\d)/);
+  const jp=text.match(/(\d{1,2})月(\d{1,2})日/);
+  if(ymd)d=new Date(+ymd[1],+ymd[2]-1,+ymd[3]);
+  else if(slash){const year=now.getFullYear();d=new Date(year,+slash[1]-1,+slash[2]);if(d<new Date(now.getFullYear(),now.getMonth(),now.getDate()))d.setFullYear(year+1)}
+  else if(jp){d=new Date(now.getFullYear(),+jp[1]-1,+jp[2]);if(d<new Date(now.getFullYear(),now.getMonth(),now.getDate()))d.setFullYear(d.getFullYear()+1)}
+  else{
+   const w=text.match(/来週(?:の)?(日|月|火|水|木|金|土)曜日?/),w2=text.match(/(日|月|火|水|木|金|土)曜日/);
+   const day=w?w[1]:w2?w2[1]:null;
+   if(day){const target="日月火水木金土".indexOf(day);let diff=(target-d.getDay()+7)%7;if(w)diff+=7;else if(diff===0)diff=7;d.setDate(d.getDate()+diff)}
+   else if(/来週/.test(text))d.setDate(d.getDate()+(8-d.getDay()));
+  }
  }
  return dateKey(d);
 }
+function parseClock(token,inheritedPeriod=""){
+ const m=token.match(/(午前|午後)?\s*(\d{1,2})(?:(?:[:：](\d{2}))|時(半|\d{1,2}分?)?)?/);
+ if(!m)return null;
+ const period=m[1]||inheritedPeriod;let hour=+m[2],minute=0;
+ if(m[3])minute=+m[3];else if(m[4]==="半")minute=30;else if(m[4])minute=+m[4].replace("分","");
+ if(period==="午後"&&hour<12)hour+=12;if(period==="午前"&&hour===12)hour=0;
+ if(hour>23||minute>59)return null;
+ return {value:`${String(hour).padStart(2,"0")}:${String(minute).padStart(2,"0")}`,period};
+}
+function parseTime(text){
+ const clock="(?:(?:午前|午後)\\s*)?\\d{1,2}(?:(?:[:：]\\d{2})|時(?:半|\\d{1,2}分?)?)?";
+ const range=text.match(new RegExp(`(${clock})\\s*(?:から|〜|～|~|－|-)\\s*(${clock}|\\d{1,2})`));
+ if(range){const a=parseClock(range[1]),b=parseClock(range[2],a?.period||"");if(a&&b)return {start:a.value,end:b.value,matched:range[0]}}
+ const single=text.match(/(?:(?:午前|午後)\s*)?\d{1,2}(?:(?:[:：]\d{2})|時(?:半|\d{1,2}分?)?)?/);
+ if(single){const c=parseClock(single[0]);if(c)return {start:c.value,end:"",matched:single[0]}}
+ if(/午前中/.test(text))return {start:"09:00",end:"12:00",matched:"午前中"};
+ if(/午後/.test(text))return {start:"13:00",end:"17:00",matched:"午後"};
+ if(/夕方/.test(text))return {start:"17:00",end:"19:00",matched:"夕方"};
+ if(/夜/.test(text))return {start:"19:00",end:"21:00",matched:"夜"};
+ return {start:"",end:"",matched:""};
+}
+function removeDateText(text){return text.replace(new RegExp(dateExpression(),"g")," ").replace(/来週までに|来週まで/g," ")}
+function cleanTitle(text){
+ return text.replace(/[、。，,.]/g," ").replace(/(?:午前中|午後|夕方|夜)/g," ").replace(/(?:午前|午後)\s*/g," ")
+ .replace(/\d{1,2}(?:(?:[:：]\d{2})|時(?:半|\d{1,2}分?)?)/g," ")
+ .replace(/\d{1,2}\s*(?:から|〜|～|~|－|-)\s*\d{1,2}/g," ")
+ .replace(/(?:から|まで|に|の|予定|を|登録|追加して|入れて|入れる|追加|登録して|終日)/g," ").replace(/\s+/g," ").trim();
+}
 function parseTodoCommand(t){
- // TODO phrases use deadline cues ("までに") or explicit "TODO/タスク".
- const explicit=/TODO|タスク/.test(t),deadline=/までに|期限/.test(t);
- if(!explicit&&!deadline)return null;
- const dueMatch=t.match(/(明後日|明日|今日|\d+日後|\d{1,2}月\d{1,2}日|来週の?(?:日|月|火|水|木|金|土)曜日?)(?:までに|が期限|まで)?/);
- const plannedMatch=t.match(/(?:実行予定|やるのは|実施は)(明後日|明日|今日|\d+日後|\d{1,2}月\d{1,2}日|来週の?(?:日|月|火|水|木|金|土)曜日?)/);
- let title=t.replace(/TODO|タスク/g,"");
- if(dueMatch)title=title.replace(dueMatch[0],"");
- if(plannedMatch)title=title.replace(plannedMatch[0],"");
+ const explicit=/TODO|タスク/.test(t),deadline=/までに|期限/.test(t);if(!explicit&&!deadline)return null;
+ const p=dateExpression(),due=t.match(new RegExp(`(${p})(?:までに|が期限|まで|を期限)?`));
+ const planned=t.match(new RegExp(`(?:実行予定|やるのは|実施は)(${p})`));
+ let title=t.replace(/TODO|タスク/g," ");if(due)title=title.replace(due[0]," ");if(planned)title=title.replace(planned[0]," ");
  title=title.replace(/^(までに|期限は|期限)/,"").replace(/(をTODOに追加|をタスクに追加|TODOに追加|タスクに追加|追加して|登録して|追加|登録)$/,"").replace(/^\s*(までに|に|は|の)\s*/,"").replace(/\s+/g," ").trim();
- if(!title||title.length>100)return {error:"TODOの内容を読み取れなかったよ。「明日までに電球を買う」のように入力してね。"};
- return {title,dueDate:dueMatch?resolveDate(dueMatch[1]):"",plannedDate:plannedMatch?resolveDate(plannedMatch[1]):""};
+ if(!title||title.length>100)return {error:"TODOの内容を読み取れなかったよ。「11/30までに電球を買う」のように入力してね。"};
+ return {title,dueDate:due?resolveDate(due[1]):"",plannedDate:planned?resolveDate(planned[1]):""};
 }
 function parseCommand(raw){
  const t=raw.trim();if(!t)return {type:"error",message:"入力してから実行してね。"};
- const todo=parseTodoCommand(t);
- if(todo){if(todo.error)return {type:"error",message:todo.error};return {type:"todoCreate",item:todo};}
+ const todo=parseTodoCommand(t);if(todo){if(todo.error)return {type:"error",message:todo.error};return {type:"todoCreate",item:todo}}
  if(/(今週|今月|今日|明日).*(予定|スケジュール)|予定を教えて|予定ある/.test(t)){
   let from=new Date(),to=new Date();
   if(t.includes("今週")){from.setDate(from.getDate()-from.getDay());to=new Date(from);to.setDate(from.getDate()+6)}
   else if(t.includes("今月")){from=new Date(from.getFullYear(),from.getMonth(),1);to=new Date(from.getFullYear(),from.getMonth()+1,0)}
-  else {const k=resolveDate(t);from=parseDate(k);to=new Date(from)}
+  else{from=parseDate(resolveDate(t));to=new Date(from)}
   const found=events.filter(e=>e.date>=dateKey(from)&&e.date<=dateKey(to)).sort(sortEvents);
   return {type:"answer",message:found.length?found.map(e=>`${fmtDate(e.date)} ${e.allDay?"終日":e.time||""} ${e.title}`).join("\n"):"その期間に登録されている予定はないよ。"};
  }
- if(/(削除|消して|取り消し)/.test(t)){
-  const target=events.find(e=>t.includes(e.title));
-  return target?{type:"delete",event:target}:{type:"error",message:"削除したい予定の名前を、登録名と同じ言葉で入れてね。"};
- }
- if(/(変更|ずらして|後ろに|前に)/.test(t)){
-  const target=events.find(e=>t.includes(e.title));
-  if(target)return {type:"edit",event:target,message:`「${target.title}」を編集する画面を開くね。変更内容を確認して保存してね。`};
-  return {type:"error",message:"変更する予定を特定できなかったよ。予定名を含めて入力してね。"};
- }
- const date=resolveDate(t);
- const timeMatch=t.match(/([01]?\d|2[0-3])時(?:([0-5]?\d)分?)?/);
- const range=t.match(/([01]?\d|2[0-3])[:：]([0-5]\d)\s*[〜~\-－から]\s*([01]?\d|2[0-3])[:：]?([0-5]\d)?/);
- const rangeHour=t.match(/([01]?\d|2[0-3])時(?:([0-5]?\d)分?)?\s*[〜~\-－から]\s*([01]?\d|2[0-3])時(?:([0-5]?\d)分?)?/);
- let start="",end="";
- if(range){start=`${String(+range[1]).padStart(2,"0")}:${range[2]}`;end=`${String(+range[3]).padStart(2,"0")}:${range[4]||"00"}`}
- else if(rangeHour){start=`${String(+rangeHour[1]).padStart(2,"0")}:${String(+(rangeHour[2]||0)).padStart(2,"0")}`;end=`${String(+rangeHour[3]).padStart(2,"0")}:${String(+(rangeHour[4]||0)).padStart(2,"0")}`}
- else if(timeMatch)start=`${String(+timeMatch[1]).padStart(2,"0")}:${String(+(timeMatch[2]||0)).padStart(2,"0")}`;
- let title=t.replace(/明後日|明日|今日|来週の?(日|月|火|水|木|金|土)曜日?|(\d+日後)|\d{1,2}月\d{1,2}日/g,"")
-  .replace(/([01]?\d|2[0-3])時(?:([0-5]?\d)分?)?/g,"").replace(/[〜~\-－から]/g," ")
-  .replace(/([01]?\d|2[0-3])[:：][0-5]\d/g,"").replace(/(に|の|予定|を|登録|追加して|入れて|入れる|追加|登録して|終日)/g," ")
-  .replace(/\s+/g," ").trim();
+ if(/(削除|消して|取り消し)/.test(t)){const target=events.find(e=>t.includes(e.title));return target?{type:"delete",event:target}:{type:"error",message:"削除したい予定の名前を、登録名と同じ言葉で入れてね。"}}
+ if(/(変更|ずらして|後ろに|前に)/.test(t)){const target=events.find(e=>t.includes(e.title));if(target)return {type:"edit",event:target,message:`「${target.title}」を編集する画面を開くね。変更内容を確認して保存してね。`};return {type:"error",message:"変更する予定を特定できなかったよ。予定名を含めて入力してね。"}}
+ const date=resolveDate(t),time=parseTime(t);let title=removeDateText(t);if(time.matched)title=title.replace(time.matched," ");title=cleanTitle(title);
  if(!title||title.length>50)return {type:"error",message:"予定名を読み取れなかったよ。「明日9時に歯医者」のように入力してね。"};
- return {type:"create",item:{title,date,time:start,end,allDay:/終日/.test(t)}};
+ return {type:"create",item:{title,date,time:time.start,end:time.end,allDay:/終日/.test(t)}};
 }
 $("commandForm").addEventListener("submit",ev=>{
  ev.preventDefault();const result=parseCommand($("command").value);
- if(result.type==="todoCreate"){openTodoDialog({...result.item,priority:2,note:""});$("assistantReply").textContent=`TODOの内容を確認してね：「${result.item.title}」${result.item.dueDate?`／期限 ${fmtDate(result.item.dueDate)}`:""}`;}
- else if(result.type==="create"){const item={...result.item,note:""};if(item.end&&item.time&&item.end<item.time){$("assistantReply").textContent="終了時刻が開始時刻より前になっているみたい。入力を確認してね。";return}openDialog(item);$("assistantReply").textContent=`登録内容を確認してね：${fmtDate(item.date)} ${item.allDay?"終日":item.time||"時間未定"}「${item.title}」`;}
+ if(result.type==="todoCreate"){openTodoDialog({...result.item,priority:2,note:""});$("assistantReply").textContent=`TODOの内容を確認してね：「${result.item.title}」${result.item.dueDate?`／期限 ${fmtDate(result.item.dueDate)}`:""}`}
+ else if(result.type==="create"){const item={...result.item,note:""};if(item.end&&item.time&&item.end<item.time){$("assistantReply").textContent="終了時刻が開始時刻より前になっているみたい。入力を確認してね。";return}openDialog(item);$("assistantReply").textContent=`登録内容を確認してね：${fmtDate(item.date)} ${item.allDay?"終日":item.time||"時間未定"}「${item.title}」`}
  else if(result.type==="answer")$("assistantReply").textContent=result.message;
- else if(result.type==="edit"){openEdit(result.event.id);$("assistantReply").textContent=result.message;}
+ else if(result.type==="edit"){openEdit(result.event.id);$("assistantReply").textContent=result.message}
  else if(result.type==="delete"){if(confirm(`「${result.event.title}」を削除する？`)){events=events.filter(e=>e.id!==result.event.id);saveEvents();$("assistantReply").textContent="予定を削除したよ。"}}
  else $("assistantReply").textContent=result.message;
 });
